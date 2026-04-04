@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --main-green: #008080; /* A slightly greener variant from your image */
+  --accent-gold: #F6BE1C;
+}
+
+body {
+  font-family: 'Poppins', sans-serif;
+  overflow-x: hidden;
+}
+
+@layer utilities {
+  .torn-paper {
+    mask-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 100"><path d="M0,0 H1000 V100 H0 Z" fill="black"/></svg>');
+    mask-size: cover;
+    mask-repeat: no-repeat;
+  }
+}
+
+/* Custom fonts for titles - simulating the script look */
+.script-title {
+    font-family: 'Dancing Script', cursive;
+    color: white;
+}
