@@ -1,6 +1,4 @@
 
-
-
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -65,6 +63,85 @@ const ShowcaseGrid = ({ items, onBook }) => (
     ))}
   </div>
 );
+
+const PackageBookingModal = ({ pkg, authUser, onClose, onSubmit, bookingStatus }) => {
+  const [form, setForm] = useState({
+    name: authUser?.name || '',
+    email: authUser?.email || '',
+    travelers: 1,
+    travelDate: '',
+    specialRequest: ''
+  });
+
+  useEffect(() => {
+    if (pkg) {
+      setForm({
+        name: authUser?.name || '',
+        email: authUser?.email || '',
+        travelers: 1,
+        travelDate: '',
+        specialRequest: ''
+      });
+    }
+  }, [pkg, authUser]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit({
+      ...form,
+      travelers: Number(form.travelers)
+    });
+  };
+
+  if (!pkg) return null;
+
+  const totalAmount = Number(pkg.price.replace(/,/g, '')) * Number(form.travelers || 1);
+
+  return (
+    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-[#004d4d]/60 backdrop-blur-sm p-3 sm:p-5 overflow-y-auto">
+      <motion.div initial={{scale:0.9}} animate={{scale:1}} exit={{scale:0.9}} className="bg-white rounded-[2.5rem] p-6 md:p-8 w-full max-w-md max-h-[90vh] shadow-2xl relative overflow-y-auto">
+        <button onClick={onClose} className="absolute top-6 right-6 text-gray-400 hover:text-red-500"><Icons.Close className="w-6 h-6"/></button>
+        <form onSubmit={handleSubmit} className="space-y-4 pb-2">
+          <h3 className="text-2xl font-extrabold text-[#008080] mb-2">Complete Package Booking</h3>
+          <div className="bg-[#f8fafc] p-4 rounded-xl mb-6 border border-gray-100 flex justify-between items-center gap-4">
+            <div>
+              <p className="text-sm font-bold text-gray-800">{pkg.title}</p>
+              <p className="text-xs text-gray-500">{pkg.days} Days / {pkg.days - 1} Nights</p>
+              <p className="text-xs text-gray-400">Base price per person: ₹{pkg.price}</p>
+            </div>
+            <p className="text-lg font-extrabold text-[#008080]">₹{pkg.price}</p>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 ml-1">Primary Traveller</label>
+            <input type="text" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full mt-1 p-3.5 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium" />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 ml-1">Email</label>
+            <input type="email" required value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full mt-1 p-3.5 bg-white border border-gray-200 rounded-xl text-gray-700 font-medium" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-gray-500 ml-1">Travellers</label>
+              <input min="1" max="20" type="number" required value={form.travelers} onChange={(e) => setForm({ ...form, travelers: e.target.value })} className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-xl" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-gray-500 ml-1">Travel Date</label>
+              <input type="date" required value={form.travelDate} onChange={(e) => setForm({ ...form, travelDate: e.target.value })} className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-xl" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 ml-1">Special Request (optional)</label>
+            <textarea value={form.specialRequest} onChange={(e) => setForm({ ...form, specialRequest: e.target.value })} rows={2} placeholder="Room preference, pickup, dietary needs etc." className="w-full mt-1 p-3 bg-white border border-gray-200 rounded-xl resize-none" />
+          </div>
+          <div className="bg-[#008080]/5 border border-[#008080]/20 rounded-xl px-4 py-3 text-sm font-bold text-[#006666]">
+            Estimated total: ₹{totalAmount}
+          </div>
+          <button type="submit" disabled={bookingStatus === 'processing'} className="w-full mt-4 bg-[#F6BE1C] text-[#008080] py-4 rounded-xl font-extrabold shadow-md hover:-translate-y-1 transition-all disabled:opacity-50">{bookingStatus === 'processing' ? 'Processing Booking...' : 'Book Package'}</button>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+};
 
 // ==========================================
 // PAGES 
@@ -678,26 +755,53 @@ export default function App() {
   const [authMode, setAuthMode] = useState('login'); 
   const [authUser, setAuthUser] = useState(null); 
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
+  const [selectedPackage, setSelectedPackage] = useState(null);
+  const [packageBookingStatus, setPackageBookingStatus] = useState('idle');
 
   const handlePackageBooking = async (pkg) => {
     if (!authUser) { setIsAuthModalOpen(true); return; }
+    setSelectedPackage(pkg);
+    setPackageBookingStatus('idle');
+  };
+
+  const handlePackageBookingSubmit = async (formData) => {
+    if (!authUser) { setIsAuthModalOpen(true); return; }
+    if (!selectedPackage) return;
+
+    const travelers = Number(formData.travelers);
+    if (travelers < 1 || travelers > 20) {
+      alert('Travellers must be between 1 and 20.');
+      return;
+    }
+
+    setPackageBookingStatus('processing');
     try {
-        const response = await fetch('http://localhost:5000/api/bookings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: pkg.title,
-                price: parseInt(pkg.price.replace(/,/g, '')),
-                userEmail: authUser.email,
-                passengerName: authUser.name,
-                type: 'package'
-            })
-        });
-        const data = await response.json();
-        if (data.success || data.message.includes("Successful")) {
-            alert(`🎉 ${pkg.title} Booked Successfully!`);
-        }
-    } catch (error) { alert("Booking failed."); }
+      const response = await fetch('http://localhost:5000/api/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: selectedPackage.title,
+          price: parseInt(selectedPackage.price.replace(/,/g, '')) * travelers,
+          userEmail: formData.email,
+          passengerName: formData.name,
+          passengerCount: travelers,
+          specialRequest: formData.specialRequest,
+          travelDate: formData.travelDate,
+          type: 'package'
+        })
+      });
+      const data = await response.json();
+      if (data.success || data.message.includes("Successful")) {
+        alert(`🎉 ${selectedPackage.title} Booked Successfully!`);
+        setSelectedPackage(null);
+      } else {
+        alert(data.message || 'Booking failed.');
+      }
+    } catch (error) {
+      alert('Booking failed.');
+    } finally {
+      setPackageBookingStatus('idle');
+    }
   };
 
   const handleSend = async (e) => {
@@ -793,6 +897,18 @@ export default function App() {
           </div>
           <form onSubmit={handleSend} className="relative mt-auto pt-4"><input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isThinking || currentItinerary} placeholder="Plan my trip..." className="w-full p-6 rounded-2xl bg-white outline-none text-[#008080] shadow-xl" /><button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 mt-2 w-10 h-10 bg-[#008080] text-white rounded-xl flex items-center justify-center"><Icons.Send className="w-5 h-5"/></button></form>
         </div>
+
+        <AnimatePresence>
+          {selectedPackage && (
+            <PackageBookingModal
+              pkg={selectedPackage}
+              authUser={authUser}
+              bookingStatus={packageBookingStatus}
+              onClose={() => setSelectedPackage(null)}
+              onSubmit={handlePackageBookingSubmit}
+            />
+          )}
+        </AnimatePresence>
 
         <AnimatePresence>{isAuthModalOpen && ( <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#004d4d]/60 backdrop-blur-sm p-5"><motion.div initial={{scale:0.9}} animate={{scale:1}} className="bg-white rounded-[2.5rem] p-10 w-full max-sm shadow-2xl relative"><button onClick={() => setIsAuthModalOpen(false)} className="absolute top-6 right-6 text-gray-400 hover:text-red-500"><Icons.Close className="w-6 h-6"/></button><h3 className="text-3xl font-extrabold text-[#008080] text-center italic">{authMode === 'login' ? 'Welcome Back' : 'Create Account'}</h3><form onSubmit={handleAuthSubmit} className="space-y-4">{authMode === 'signup' && ( <input type="text" required placeholder="Full Name" value={authForm.name} onChange={(e) => setAuthForm({...authForm, name: e.target.value})} className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" /> )}<input type="email" required placeholder="Email" value={authForm.email} onChange={(e) => setAuthForm({...authForm, email: e.target.value})} className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" /><input type="password" required placeholder="Password" value={authForm.password} onChange={(e) => setAuthForm({...authForm, password: e.target.value})} className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none" /><button type="submit" className="w-full mt-6 bg-[#008080] text-white py-4 rounded-xl font-extrabold">{authMode === 'login' ? 'Sign In' : 'Sign Up'}</button></form><button onClick={() => { setAuthMode(authMode === 'login' ? 'signup' : 'login'); setAuthForm({name:'', email:'', password:''}); }} className="w-full mt-6 text-[#F6BE1C] font-bold text-sm">Switch to {authMode === 'login' ? 'Sign Up' : 'Login'}</button></motion.div></div> )}</AnimatePresence>
       </div>
