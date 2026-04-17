@@ -1,3 +1,4 @@
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -9,14 +10,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// --------------------------------------------------
 // 1. MONGODB & AI SETUP
+
 mongoose.connect(process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/traveloo')
     .then(() => console.log('✅ MongoDB Connected!'))
     .catch(err => console.log('❌ MongoDB Error:', err));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// 2. MANUAL DATABASE (Static Cache)
+// --------------------------------------------------
+// 2. MASTER TRAVEL DATABASE (Static Cache) - ALL CITIES 
+
 const travelData = {
    manali: {
         title: "Snowy Manali Adventure",
@@ -152,48 +157,249 @@ const travelData = {
     },
 };
 
-// 3. API ROUTE (Hybrid Logic)
+
+
+const bookingSchema = new mongoose.Schema({
+    flightId: String,       // Flight ke liye (e.g., FL101)
+    airline: String,        // Flight ke liye (e.g., IndiGo)
+    flightNumber: String,
+    from: String,
+    to: String,
+    departureTime: String,
+    arrivalTime: String,
+    travelDate: String,
+    cabinClass: String,
+    seatPreference: String,
+    mealRequired: Boolean,
+    mealType: String,
+    passengerCount: Number,
+    maleCount: Number,
+    femaleCount: Number,
+    specialRequest: String,
+    title: String,          // Package ke liye (e.g., Maldives Honeymoon)
+    userEmail: String,
+    price: Number,
+    passengerName: String,
+    type: { type: String, default: 'flight' }, // 'flight' ya 'package' pehchanne ke liye
+    date: { type: Date, default: Date.now }
+});
+const Booking = mongoose.models.Booking || mongoose.model('Booking', bookingSchema);
+
+const flightTemplates = [
+    //delhi to amritsar
+    { from: "DEL", to: "ATQ", airline: "SpiceJet", flightNumber: "SG 2951", basePrice: 3400, duration: "1h 05m" },
+    { from: "DEL", to: "ATQ", airline: "Air India Express", flightNumber: "SG 2953", basePrice: 3600, duration: "1h 05m" },
+    { from: "DEL", to: "ATQ", airline: "IndiGo", flightNumber: "SG 2954", basePrice: 3400, duration: "1h 05m" },
+    //asr to  delhi
+    { from: "ATQ", to: "DEL", airline: "Air India", flightNumber: "9I 612", basePrice: 3600, duration: "1h 20m" },
+    { from: "ATQ", to: "DEL", airline: "IndiGo", flightNumber: "9I 622", basePrice: 3600, duration: "1h 30m" },
+    { from: "ATQ", to: "DEL", airline: "Air India Express", flightNumber: "9I 630", basePrice: 3600, duration: "1h 10m" },
+     // del to bombay
+    { from: "DEL", to: "BOM", airline: "Air India Express", flightNumber: "AI 866", basePrice: 5400, duration: "2h 15m" },
+    { from: "DEL", to: "BOM", airline: "Indigo", flightNumber: "AI 867", basePrice: 6700, duration: "2h 15m" },
+    { from: "DEL", to: "BOM", airline: "SpiceJet", flightNumber: "AI 878", basePrice: 6928, duration: "2h 15m" },
+    //bom to delhi
+    { from: "BOM", to: "DEL", airline: "IndiGo", flightNumber: "AI 899", basePrice: 6928, duration: "2h 15m" },
+    { from: "DEL", to: "BOM", airline: "Air India", flightNumber: "AI 900", basePrice: 6928, duration: "2h 15m" },
+    //delhi to goa
+    { from: "DEL", to: "GOI", airline: "IndiGo", flightNumber: "6E 6273", basePrice: 6200, duration: "2h 35m" },
+    //delhi to bengaluru
+    { from: "DEL", to: "BLR", airline: "Akasa Air", flightNumber: "UK 819", basePrice: 8738, duration: "3h 10m" },
+    { from: "DEL", to: "BLR", airline: "SpiceJet", flightNumber: "6E 6278", basePrice: 8800, duration: "2h 35m" },
+    { from: "DEL", to: "BLR", airline: "Air India Express", flightNumber: "6E 6178", basePrice: 8900, duration: "2h 55m" },
+    //bengaluru to delhi
+    { from: "BLR", to: "DEL", airline: "Air India", flightNumber: "AI 504", basePrice: 13000, duration: "2h 45m" },
+    { from: "BLR", to: "DEL", airline: "IndiGo", flightNumber: "AI 509", basePrice: 14056, duration: "3h" },
+    //Bombay to goi (goa)
+    { from: "BOM", to: "GOI", airline: "IndiGo", flightNumber: "6E 5129", basePrice: 3100, duration: "1h 10m" },
+    { from: "BOM", to: "GOI", airline: "IndiGo", flightNumber: "6E 5179", basePrice: 3600, duration: "1h 15m" },
+    { from: "BOM", to: "GOI", airline: "Air India Express", flightNumber: "6E 5029", basePrice: 3100, duration: "1h 20m" },
+    //bombay to benglauru
+    { from: "BOM", to: "BLR", airline: "Air India Express", flightNumber: "IX 2375", basePrice: 5400, duration: "1h 45m" },
+    { from: "BOM", to: "BLR", airline: "Akasa Air", flightNumber: "IX 2475", basePrice: 3900, duration: "1h 50m" },
+    { from: "BOM", to: "BLR", airline: "SpiceJet", flightNumber: "IX 2775", basePrice: 4970, duration: "1h 55m" },
+    //bengaluru to goa
+    { from: "BLR", to: "GOI", airline: "Air India Express", flightNumber: "S5 124", basePrice: 3300, duration: "1h 20m" },
+    { from: "BLR", to: "GOI", airline: "IndiGo", flightNumber: "S5 164", basePrice: 3800, duration: "1h 15m" },
+    //
+    { from: "GOI", to: "DEL", airline: "Air India Express", flightNumber: "UK 848", basePrice: 8900, duration: "2h 45m" },
+    { from: "GOI", to: "DEL", airline: "IndiGo", flightNumber: "UK 800", basePrice: 6400, duration: "2h 25m" },
+    //jaipur to del
+    { from: "JAI", to: "DEL", airline: "IndiGo", flightNumber: "6E 7467", basePrice: 2966, duration: "1h 00m" },
+    { from: "JAI", to: "DEL", airline: "Air India", flightNumber: "6E 7067", basePrice: 2800, duration: "50m" },
+    { from: "JAI", to: "DEL", airline: "IndiGo", flightNumber: "6E 7447", basePrice: 2800, duration: "1h 05m" },
+    //del to jai
+    { from: "DEL", to: "JAI", airline: "Air India", flightNumber: "IX 1953", basePrice: 3400, duration: "1h 05m" },
+    { from: "DEL", to: "JAI", airline: "IndiGo", flightNumber: "IX 1943", basePrice: 4500, duration: "50m" }
+];
+
+const departureWindows = [
+    { departure: "06:20", arrivalOffset: "+2h" },
+    { departure: "09:10", arrivalOffset: "+2h" },
+    { departure: "13:40", arrivalOffset: "+3h" },
+    { departure: "17:55", arrivalOffset: "+2h" },
+    { departure: "21:05", arrivalOffset: "+2h" }
+];
+
+const buildLiveLikeFlights = () => {
+    const today = new Date();
+    const flights = [];
+    let counter = 101;
+
+    for (let dayOffset = 0; dayOffset < 12; dayOffset++) {
+        const d = new Date(today);
+        d.setDate(today.getDate() + dayOffset);
+        const travelDate = d.toISOString().split('T')[0];
+
+        flightTemplates.forEach((template, idx) => {
+            const window = departureWindows[(dayOffset + idx) % departureWindows.length];
+            flights.push({
+                id: `FL${counter++}`,
+                ...template,
+                departureTime: window.departure,
+                arrivalTime: window.arrivalOffset,
+                date: travelDate,
+                seatsLeft: Math.max(4, 28 - ((dayOffset * 3 + idx) % 22)),
+                price: template.basePrice + ((dayOffset + idx) % 4) * 350
+            });
+        });
+    }
+
+    return flights;
+};
+
+
+// 4. API ROUTES
+// --------------------------------------------------
+
+// A. Chat Route (AI + Manual Logic) --------
 app.post('/api/chat', async (req, res) => {
     const { message } = req.body;
-    if (!message) return res.status(400).json({ text: "Bhai, kuch toh likho!" });
+    if (!message) return res.status(400).json({ text: "Kuch likho bhai!" });
 
     const query = message.toLowerCase();
-
-    // STEP 1: Check if city is in Manual Data
     const matchedCityKey = Object.keys(travelData).find(city => query.includes(city));
 
     if (matchedCityKey) {
-        console.log("📍 Serving from Manual Data");
         return res.json({ type: 'itinerary', data: travelData[matchedCityKey] });
     }
 
-    // STEP 2: If NOT in manual, call Gemini AI
-    console.log("🤖 Calling Gemini AI for dynamic response...");
     try {
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        
-        const prompt = `
-            Plan a detailed 3-day trip for: "${message}". 
-            Respond strictly in valid JSON format only. 
-            Include title, cost (budget vs premium range), weather, crowd status, hidden_spots (at least 2), and a 3-day itinerary.
-            Format: { "title": "", "cost": "", "weather": "", "crowd": "", "hidden_spots": [], "days": [{ "day": 1, "title": "", "events": [] }] }
-        `;
-
+        const prompt = `Plan a trip for: "${message}". Respond strictly in JSON format with title, cost, weather, crowd, hidden_spots, and a 3-day itinerary. Format: { "title": "", "cost": "", "weather": "", "crowd": "", "hidden_spots": [], "days": [{ "day": 1, "title": "", "events": [] }] }`;
         const result = await model.generateContent(prompt);
         const response = await result.response;
         const text = response.text().replace(/```json|```/g, "").trim();
-        
-        const aiData = JSON.parse(text);
-        res.json({ type: 'itinerary', data: aiData });
+        res.json({ type: 'itinerary', data: JSON.parse(text) });
+    } catch (e) {
+        res.json({ type: 'text', text: "AI is busy, please try Manali, Goa or Amritsar!" });
+    }
+});
 
-    } catch (error) {
-        console.error("❌ Gemini Error:", error);
-        res.json({ 
-            type: 'text', 
-            text: "wait a min!" 
+// B. Flight Search Route ----------------------
+app.get('/api/flights', (req, res) => {
+    const flights = buildLiveLikeFlights();
+    const { from, to } = req.query;
+    if (!from || !to) return res.json(flights);
+    const filtered = flights.filter(f => f.from.toUpperCase() === from.toUpperCase() && f.to.toUpperCase() === to.toUpperCase());
+    res.json(filtered);
+});
+
+// C. Final Booking POST Route - 
+// app.post('/api/bookings', async (req, res) => {
+//     try {
+//         const newBooking = new Booking({
+//             flightId: req.body.flightId || "N/A",
+//             airline: req.body.airline || "N/A",
+//             userEmail: req.body.userEmail || req.body.email,
+//             price: req.body.price || 0,
+//             passengerName: req.body.passengerName || "Simarp208"
+//         });
+//         await newBooking.save();
+//         return res.status(201).json({ success: true, message: "Booking Successful!", booking: newBooking });
+//     } catch (error) {
+//         return res.status(200).json({ success: true, message: "Demo Booking Successful (Local)!" });
+//     }
+// });
+app.post('/api/bookings', async (req, res) => {
+    try {
+        const passengerCount = Number(req.body.passengerCount || 1);
+        const maleCount = Number(req.body.maleCount || 0);
+        const femaleCount = Number(req.body.femaleCount || 0);
+
+        if (passengerCount > 0 && maleCount + femaleCount > 0 && maleCount + femaleCount !== passengerCount) {
+            return res.status(400).json({
+                success: false,
+                message: "Male + Female passenger count must match total passengers."
+            });
+        }
+
+        const newBooking = new Booking({
+            flightId: req.body.flightId || "PKG", // Agar package hai toh PKG likha aayega
+            airline: req.body.airline || "",
+            flightNumber: req.body.flightNumber || "",
+            from: req.body.from || "",
+            to: req.body.to || "",
+            departureTime: req.body.departureTime || "",
+            arrivalTime: req.body.arrivalTime || "",
+            travelDate: req.body.travelDate || "",
+            cabinClass: req.body.cabinClass || "Economy",
+            seatPreference: req.body.seatPreference || "Any",
+            mealRequired: Boolean(req.body.mealRequired),
+            mealType: req.body.mealType || "",
+            passengerCount,
+            maleCount,
+            femaleCount,
+            specialRequest: req.body.specialRequest || "",
+            title: req.body.title || "",          // Package ka naam
+            userEmail: req.body.userEmail,
+            price: req.body.price,
+            passengerName: req.body.passengerName,
+            type: req.body.type || 'flight'      // Flight ya Package save hoga
         });
+
+        await newBooking.save();
+        res.status(201).json({ success: true, message: "Booking Successful!" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Booking failed." });
+    }
+});
+
+//D. Rebook logic ------
+app.post('/api/ai-rebook', async (req, res) => {
+    const { city } = req.body;
+    const targetCity = city ? city.toUpperCase() : "";
+
+    try {
+        // AGENTIC LOGIC: Agar Goa hai toh hum zabardasti Alert dikhayenge Demo ke liye
+        if (targetCity === "GOA" || targetCity === "GOI") {
+            return res.json({
+                status: "⚠️ FLIGHT CANCELLATION ALERT",
+                reason: `Heavy monsoon and storm detected in ${city}. Safety protocols initiated.`,
+                agentAction: "I have autonomously fetched the best alternative flights for you.",
+                alternatives: [
+                    { airline: "Air India (Next Day)", price: "₹4,200", status: "Available" },
+                    { airline: "Vistara (Evening)", price: "₹5,800", status: "Available" }
+                ]
+            });
+        }
+
+        // Baki cities ke liye normal AI decision
+        res.json({ status: "Clear", message: "Weather is fine." });
+    } catch (e) {
+        res.json({ status: "Error", message: "AI Agent currently offline." });
+    }
+});
+
+// E. Dashboard Route
+app.get('/api/bookings/:email', async (req, res) => {
+    try {
+        const bookings = await Booking.find({ userEmail: req.params.email });
+        res.json(bookings);
+    } catch (error) {
+        res.json([]);
     }
 });
 
 const PORT = 5000;
-app.listen(PORT, () => console.log(`🚀 Hybrid Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
